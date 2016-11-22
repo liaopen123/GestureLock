@@ -24,6 +24,7 @@ import java.util.ArrayList;
 public class GestureLockView extends View {
 
     private static final String TAG = "GestureLockView";
+    private  Context context;
     private int mPadding = 40;//圆环与屏幕边框的内边距值
     private int maxRadius;
     private int defaultWidth;
@@ -31,22 +32,28 @@ public class GestureLockView extends View {
     ArrayList<DotBean> selectedDotsList = new ArrayList<>();
     private Paint mPaint = new Paint();
     private int circleRadius;
+    public   boolean mSettingGesture = true;//true代表设置手势界面  false 代表解锁界面
     private DotBean currentPoint;//选中的当前点
     private float moveX;
     private float moveY;
     Path path = new Path();
     private boolean isFirst = true;
+    private GestureStateListener setOnGestureStateListener;//手势的监听
+    private int mCount=1;//设置手势密码是时候用来计数
 
     public GestureLockView(Context context) {
         super(context);
+        this.context = context;
     }
 
     public GestureLockView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        this.context = context;
     }
 
     public GestureLockView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+        this.context = context;
     }
 
     @Override
@@ -94,6 +101,29 @@ circleRadius = (defaultWidth-(mPadding*2))/12;
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
+            if(selectedDotsList.size()>1) { //当选择的点大于2个时候才开始画path  否则会有飞线的bug
+                //画path线
+                for(int i = 0;i<selectedDotsList.size();i++){
+                    if(i==0&&selectedDotsList.size()>1){
+                        path.reset();
+                        path.moveTo(selectedDotsList.get(i).pointX,selectedDotsList.get(i).pointY);
+                    }else{
+                        path.lineTo(selectedDotsList.get(i).pointX,selectedDotsList.get(i).pointY);
+                    }
+                }
+
+                canvas.drawPath(path, mPaint);
+            }
+
+            //画动的线
+            if(null!=currentPoint){
+                Log.d(TAG,"LINE");
+                canvas.drawLine(currentPoint.pointX,currentPoint.pointY,(int)moveX,(int)moveY,mPaint);
+                canvas.save();
+
+
+            }
+
         for(DotBean dotBean :dotsList){
             canvas.drawCircle(dotBean.pointX,dotBean.pointY,dotBean.radius,mPaint);
             Bitmap selectedBitmap = getBitmapFor(R.mipmap.gesture_pattern_selected);
@@ -102,32 +132,7 @@ circleRadius = (defaultWidth-(mPadding*2))/12;
                 canvas.drawBitmap(selectedBitmap, dotBean.pointX - (selectedBitmap.getWidth() / 2) - 5, dotBean.pointY - (selectedBitmap.getHeight() / 2), mPaint);
             }
 
-            if(selectedDotsList.size()>1) { //当选择的点大于2个时候才开始画path  否则会有飞线的bug
-            //画线
-            for(int i = 0;i<selectedDotsList.size();i++){
-                    if(i==0&&selectedDotsList.size()>1){
-                        path.reset();
-                        path.moveTo(selectedDotsList.get(i).pointX,selectedDotsList.get(i).pointY);
-                    }else{
-                        path.lineTo(selectedDotsList.get(i).pointX,selectedDotsList.get(i).pointY);
-                    }
-            }
-
-                canvas.drawPath(path, mPaint);
-            }
-//            for(DotBean dotBean1:selectedDotsList){
-//                if()
-//                path.lineTo();
-//            }
-            if(null!=currentPoint){
-                Log.d(TAG,"LINE");
-                canvas.drawLine(currentPoint.pointX,currentPoint.pointY,(int)moveX,(int)moveY,mPaint);
-                canvas.save();
-
-
-            }
         }
-
 
     }
 
@@ -159,10 +164,43 @@ circleRadius = (defaultWidth-(mPadding*2))/12;
                 break;
             case MotionEvent.ACTION_DOWN:
                 Log.d(TAG,"ACTION_DOWN");
+                //清楚数据
+              //  dotsList.clear();
                 break;
 
             case MotionEvent.ACTION_UP:
                 Log.d(TAG,"ACTION_UP");
+                clearLine();//松手的时候   清楚毛刺线drawline();
+
+                //长度小于4的时候
+                if(selectedDotsList.size()<4){
+                    if(null!=setOnGestureStateListener) {
+                        setOnGestureStateListener.setCountLess4();
+                    }
+                    clearGresture();
+                    return true;
+                }
+
+                //设置密码 并且第一次输入
+                if(mSettingGesture&&mCount==1){
+                    if(null!=setOnGestureStateListener) {
+                        setOnGestureStateListener.fisrtSettingSuccess();
+                    }
+                    mCount++;
+                }
+
+                 //第二次确认手势密码
+                if(mSettingGesture&&mCount==2){
+                    if(null!=setOnGestureStateListener) {
+                        setOnGestureStateListener.secondSettingSuccess();
+                    }
+                }
+
+                //确认密码
+                if(!mSettingGesture){
+
+                }
+
                 for(DotBean dotBean:selectedDotsList){
                     Log.d(TAG,"得到的手势密码为："+dotBean.id);
                 }
@@ -195,4 +233,53 @@ circleRadius = (defaultWidth-(mPadding*2))/12;
         return null;
     }
 
+
+
+    interface GestureStateListener{
+        void setCountLess4();//手势密码少于4位
+        int[] fisrtSettingSuccess();//第一次设置成功
+        int[] secondSettingSuccess();//第二次设置成功
+        void inputGestureWrong();//输入手势密码失败
+    }
+
+    void setOnGestureStateListener(GestureStateListener gestureStateListener){
+        this.setOnGestureStateListener =gestureStateListener;
+    }
+
+
+    public void  setMode(boolean settingGesture){
+        this.mSettingGesture = settingGesture;
+    }
+
+
+
+    public void clearGresture(){
+        postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                for(DotBean dotBean:selectedDotsList){
+                    dotBean.hasSelected = false;
+                }
+                selectedDotsList.clear();
+                invalidate();
+            }
+        },1000);
+
+    }
+    /**消除线**/
+    public  void clearLine(){
+        currentPoint=null;//这个可以消除画线
+        invalidate();
+    }
+
+
+    /**把密码转换成String类型进行比较**/
+    public  void transPassword2String(){
+
+    }
+    /****/
+    public Boolean compareWithNativePWD(ArrayList<DotBean> dotsList){
+
+        return false;
+    }
 }
