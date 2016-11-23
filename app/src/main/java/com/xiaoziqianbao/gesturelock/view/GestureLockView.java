@@ -1,12 +1,14 @@
 package com.xiaoziqianbao.gesturelock.view;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -32,7 +34,7 @@ public class GestureLockView extends View {
     ArrayList<DotBean> selectedDotsList = new ArrayList<>();
     private Paint mPaint = new Paint();
     private int circleRadius;
-    public   boolean mSettingGesture = true;//true代表设置手势界面  false 代表解锁界面
+    public   boolean mSettingGesture = false;//true代表设置手势界面  false 代表解锁界面
     private DotBean currentPoint;//选中的当前点
     private float moveX;
     private float moveY;
@@ -40,6 +42,7 @@ public class GestureLockView extends View {
     private boolean isFirst = true;
     private GestureStateListener setOnGestureStateListener;//手势的监听
     private int mCount=1;//设置手势密码是时候用来计数
+    private String firstInputPWD;//第一次输入的手势密码
 
     public GestureLockView(Context context) {
         super(context);
@@ -180,24 +183,52 @@ circleRadius = (defaultWidth-(mPadding*2))/12;
                     clearGresture();
                     return true;
                 }
+                //第二次确认手势密码
+                if(mSettingGesture&&mCount==2){
+                    Log.d(TAG,"第而次输入手势密码");
+                    String secondPWD = transPassword2String(selectedDotsList);
+                    if(!secondPWD.equals(firstInputPWD)){
+                        //l两次密码不相同
+                        if(null!=setOnGestureStateListener) {
+                            setOnGestureStateListener.secondSettingFailed();
+                        }
+                        clearGresture();
+                    }else{
+                        //两次密码相同
+                        if(null!=setOnGestureStateListener) {
+                            setOnGestureStateListener.secondSettingSuccess(secondPWD);
+                        }
+                    }
 
+
+                }
                 //设置密码 并且第一次输入
                 if(mSettingGesture&&mCount==1){
+                    Log.d(TAG,"第一次输入手势密码");
                     if(null!=setOnGestureStateListener) {
                         setOnGestureStateListener.fisrtSettingSuccess();
+
                     }
+                     firstInputPWD = transPassword2String(selectedDotsList);
                     mCount++;
+                    clearGresture();
                 }
 
-                 //第二次确认手势密码
-                if(mSettingGesture&&mCount==2){
-                    if(null!=setOnGestureStateListener) {
-                        setOnGestureStateListener.secondSettingSuccess();
-                    }
-                }
+
 
                 //确认密码
                 if(!mSettingGesture){
+                    if(compareWithNativePWD(selectedDotsList)){
+                        if(null!=setOnGestureStateListener) {
+                            setOnGestureStateListener.inputGestureCorrect();
+                        }
+                    }else{
+                        setOnGestureStateListener.inputGestureWrong();
+                    }
+
+
+
+
 
                 }
 
@@ -235,14 +266,16 @@ circleRadius = (defaultWidth-(mPadding*2))/12;
 
 
 
-    interface GestureStateListener{
+   public  interface GestureStateListener{
         void setCountLess4();//手势密码少于4位
-        int[] fisrtSettingSuccess();//第一次设置成功
-        int[] secondSettingSuccess();//第二次设置成功
+        void fisrtSettingSuccess();//第一次设置成功
+        void secondSettingSuccess(String secondPWD);//第二次设置成功
+        void secondSettingFailed();//第二次设置手势密码错误
         void inputGestureWrong();//输入手势密码失败
+        void inputGestureCorrect();//输入手势密码失败
     }
 
-    void setOnGestureStateListener(GestureStateListener gestureStateListener){
+    public void setOnGestureStateListener(GestureStateListener gestureStateListener){
         this.setOnGestureStateListener =gestureStateListener;
     }
 
@@ -274,12 +307,27 @@ circleRadius = (defaultWidth-(mPadding*2))/12;
 
 
     /**把密码转换成String类型进行比较**/
-    public  void transPassword2String(){
-
+    public  String transPassword2String(ArrayList<DotBean> dotsList){
+        StringBuilder sb = new StringBuilder();
+        for(DotBean dotBean:dotsList){
+            sb.append(dotBean.id);
+        }
+        Log.d(TAG,"SB:"+sb);
+        return sb.toString();
     }
-    /****/
+    /**本地SP保存密码与输入密码进行比较**/
     public Boolean compareWithNativePWD(ArrayList<DotBean> dotsList){
+        SharedPreferences sharedPreferences = context.getSharedPreferences("userInfo", Context.MODE_PRIVATE);
+        String pwd = sharedPreferences.getString("pwd", "");
+        if(TextUtils.isEmpty(pwd)){
+            throw new RuntimeException("please set your gesturePwd first!");
+        }else{
+           if(pwd.equals(transPassword2String(dotsList))){//sp中的密码与输入密码比较
+               return true;
+           }else{
+               return false;
+           }
+        }
 
-        return false;
     }
 }
